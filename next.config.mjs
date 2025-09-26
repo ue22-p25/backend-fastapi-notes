@@ -10,7 +10,8 @@ const nextConfig = {
   pageExtensions: ["js", "jsx", "mdx", "ts", "tsx"],
   // Optionally, add any other Next.js config below
   // when deploying on GitHub Pages we end up under
-  basePath: isProd ? "/backend-fastapi-notes" : "",
+  // no longer needed as we now use info-mines.paris
+  // basePath: isProd ? "/backend-fastapi-notes" : "",
 }
 
 /** @type {import('codehike/mdx').CodeHikeConfig} */

@@ -12,7 +12,7 @@ that contains one commit for each of the steps illustrated in this story
 
 for starters the outcome is published on
 
-https://ue22-p25.github.io/backend-fastapi-notes/scrollycoding
+https://backend-fastapi-notes.info-mines.paris/scrollycoding
 
 ## how is it done ?
 
