@@ -1,0 +1,73 @@
+## !intro a notes app in FastAPI step by step
+
+**Warning**:  
+[the final code is available at this repo](https://github.com/ue22-p25/backend-fastapi-notes-steps)
+(as well as all the steps in the successive commits)
+
+so, our goal here is to show **why** we're doing things, and **in what order**  
+**do not try** to apply these successive **changes yourself** in the code !  
+This would be very time-consuming, you would find yourself spending all your time doing cut-and-paste,
+and that's not the goal here :)
+
+
+### step 00: the starter code
+
+the starter code in step 00 is the basic FastAPI `hello world` app
+
+```python main.py
+!from ../main-00.py
+```
+
+that you start from the terminal with:
+
+```bash
+fastapi run --reload
+```
+
+By default this uses port 8000, so no need to specify it even on MacOS
+(where port 5000, the Flask default, is used by a system service)
+
+{{AUTO}}
+
+## !outro conclusion
+
+and a few words to conclude
+
+### one caveat
+
+as pointed out towards the end, our code still suffers from a few issues; 
+the most important one being maybe the code duplication between the SSR code (the HTML template) 
+and the CSR code (the JS code in the last 3 steps)
+
+one way to circumvent this would be to 
+- send an empty template (just the page outer layout, and just a place holder for the content)
+- and then use WS to notify the newly-connected browser about the content to load
+
+this improvement is left to the reader as an exercise
+
+### splitting into services
+
+here's how the whole system could be split into three different services
+
+![](front-notes.excalidraw.svg)
+
+- `front.notes.io` serves only the frondend (i.e. HTML, CSS, JS)
+- `api.notes.io` serves the API and outputs JSON data
+- `db.notes.io` serves the database, and talks SQL; only the API service is supposed to access it
+
+### WebSocket pros over HTTP
+
+here's a small figure that outlines the pro of websockets over regular HTTP traffic
+
+![](websocket.excalidraw.svg)
+
+### SocketIO
+
+FYI it may be even simpler to use a library like [SocketIO](https://socket.io/)
+that abstracts away the details of the underlying protocol (here WebSocket)
+and provides a simple API for real-time communication.  
+For example, our code does not handle reconnections, which is a common issue in real-time
+applications; using SocketIO would take care of that for us.
+
+see e.g. [this library](https://pypi.org/project/fastapi-socketio/)
+for a library that integrates SocketIO with FastAPI

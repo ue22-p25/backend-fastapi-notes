@@ -1,0 +1,35 @@
+import Link from 'next/link'
+import TableOfContents from '../components/tableofcontents'
+import TableOfContentsItem from '../components/tableofcontentsitem'
+
+<TableOfContents />
+
+# a notes app in FastAPI step by step (single column)
+
+<Link href="/">Back to top</Link>
+
+please see the warning, as well as the code repo locations, at the top of the [scrollycoding page](scrollycoding/)
+
+<TableOfContentsItem topic="step 00: the starter code" label="00 the starter code" tooltip="FastAPI hello world">
+
+the starter code in step 00 is the basic FastAPI `hello world` app
+
+```python main.py
+!from ../main-00.py
+```
+
+that you start from the terminal with:
+
+```bash
+fastapi run --reload
+```
+
+By default this uses port 8000, so no need to specify it even on MacOS (where port 5000, the Flask default, is used by a system service)
+
+</TableOfContentsItem>
+
+{{AUTO}}
+
+## conclusion
+
+see the conclusion at the bottom of the [scrollycoding page](scrollycoding/)

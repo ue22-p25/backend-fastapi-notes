@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styles */
+html {
+  scroll-behavior: smooth;
+}
+body {
+  margin-left: 20px;
+  --color-gold: #767d3b;
+  --color-pink: #b6538e;
+  --color-purple: rgb(119, 61, 144);
+}
+
+/* 
+ * stepstohike separate diff chunks with a line that reads
+ * # !className separator
+ * ......
+ * this way if the class is not present, the separator will wtill show somehow
+ */
+
+.separator {
+  border-radius: 2px;
+  border: 1px solid var(--color-gold);
+  height: 5px;
+  margin: 0.5rem 0;
+
+  /* but when the class is present we can hide the line that has all the dots */
+  >* {
+    display: none;
+  }
+}
+
+h2 {
+  background-color: var(--color-gold);
+  padding: 1em 3em;
+  border-radius: 5px;
+  margin-bottom: 0.6em !important;
+}
+
+h3 {
+  /* background-color: rgb(225, 148, 32); */
+  padding: 0.3em 2em;
+  border-radius: 6px;
+
+  &::before {
+    content: " ✅ ";
+  }
+}
+
+h2+div>h3:first-child, h2+h3 {
+  background-color: var(--color-pink);
+  opacity: 0.8;
+  border-radius: 4px;
+  margin-top: 0.6em;
+
+  &::before {
+    content: " 🚀 ";
+  }
+
+  &+h4 {
+    padding: 0.3em 2em;
+    border-radius: 3px;
+    background-color: var(--color-purple);
+
+    &::before {
+      content: " → ";
+    }
+  }
+}
+
+.MuiTimeline-root {
+  align-items: flex-start;
+  width: 30em;
+
+  .MuiTimelineItem-root {
+    width: 100%;
+    /* align-items: flex-start; */
+    min-height: 20px;
+    padding: 0px 0px !important;
+    margin: 0px 0px !important;
+    line-height: 1;
+    align-items: baseline;
+
+    &::before {
+      display: none !important;
+    }
+    .MuiTimelineDot-root {
+      margin: 0px !important
+    }
+    .MuiTypography-root {
+      height: 24px !important;
+   }
+  }
+}

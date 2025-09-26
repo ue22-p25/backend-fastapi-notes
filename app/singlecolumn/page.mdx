@@ -1,0 +1,1361 @@
+import Link from 'next/link'
+import TableOfContents from '../components/tableofcontents'
+import TableOfContentsItem from '../components/tableofcontentsitem'
+
+<TableOfContents />
+
+# a notes app in FastAPI step by step (single column)
+
+<Link href="/">Back to top</Link>
+
+please see the warning, as well as the code repo locations, at the top of the [scrollycoding page](scrollycoding/)
+
+<TableOfContentsItem topic="step 00: the starter code" label="00 the starter code" tooltip="FastAPI hello world">
+
+the starter code in step 00 is the basic FastAPI `hello world` app
+
+```python main.py
+!from ../main-00.py
+```
+
+that you start from the terminal with:
+
+```bash
+fastapi run --reload
+```
+
+By default this uses port 8000, so no need to specify it even on MacOS (where port 5000, the Flask default, is used by a system service)
+
+</TableOfContentsItem>
+
+<TableOfContentsItem topic='step 01a -  using a database' label='01a using a database' tooltip='changes in ./main.py'>
+### 00 -> 01a - changes in <code>main.py</code>
+#### create a database with sqlmodel using a lifespan
+
+we import the `sqlmodel` module; and in order to create the database, we define the `lifespan` function.
+
+FastAPI expects this function to be a generator function; this allows to define the application prolog and epilog
+(the prolog is executed before the first `yield` statement, and the epilog is executed after that point)
+
+Note how the `app` variable is created by passing the `lifespan` function to the `FastAPI` constructor.
+
+With this version, the database is created and populated when the application starts (although at this point the database is empty)
+```python main.py
+# !className(1) separator
+# !diff(2:2) -
+# !diff(3:5) +
+# !diff(7:7) +
+# !diff(8:8) -
+# !diff(9:25) +
+........
+VERSION = "00"
+VERSION = "01a"
+
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from sqlmodel import SQLModel, create_engine
+app = FastAPI()
+SQLITE_URL = f"sqlite:///notes.db"
+engine = create_engine(SQLITE_URL)
+
+# this is how we control what is done at startup and shutdown
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # startup logic comes here
+    # Create the database and tables if they don't exist
+    SQLModel.metadata.create_all(engine)
+
+    yield
+    # shutdown logic comes here
+    # none so far
+
+
+# Create the FastAPI app with the lifespan context manager
+app = FastAPI(lifespan=lifespan)
+@app.get("/")
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 01b -  a DB session' label='01b a DB session' tooltip='changes in ./main.py'>
+### 01a -> 01b - changes in <code>main.py</code>
+#### defining SessionDep for interacting with the DB
+
+this is boilerplate code to expose a session object, which we'll need to
+actually talk to the database
+
+it's interesting to note: this pattern is called "dependency injection"; the
+`SessionDep` object allows to reference a session object even though we **do not
+explicitly create it**; by defining `get_session`, we just explain **how to
+create it**, the framework will ensure its creation will happen before the first
+use
+```python main.py
+# !className(1) separator
+# !diff(2:2) -
+# !diff(3:3) +
+# !diff(5:5) +
+# !diff(7:8) +
+# !diff(10:10) +
+# !className(13) separator
+# !diff(15:22) +
+........
+VERSION = "01a"
+VERSION = "01b"
+from contextlib import asynccontextmanager
+from typing import Annotated
+from fastapi import FastAPI
+from fastapi import Depends
+
+from sqlmodel import SQLModel, create_engine
+from sqlmodel import Session
+SQLITE_URL = f"sqlite:///notes.db"
+engine = create_engine(SQLITE_URL)
+........
+    # none so far
+# create a so-called "dependency" to get the database session
+def get_session():
+    with Session(engine) as session:
+        yield session
+
+SessionDep = Annotated[Session, Depends(get_session)]
+
+
+# Create the FastAPI app with the lifespan context manager
+app = FastAPI(lifespan=lifespan)
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 02a -  POST /api/notes to create notes' label='02a POST /api/notes to create notes' tooltip='changes in ./main.py'>
+### 01b -> 02a - changes in <code>main.py</code>
+#### a table to store notes, and an API endpoint to create them
+
+this is typical code to create a table in a database; note the `table=True` passed to the `Note` class  
+this is what defines the actual set of columns in the database table
+
+as far as the API is concerned, we define a `POST` endpoint to create a note  
+in particular, note how minimal the code is; we  don't need to make any check on
+the incoming data, it will automatically be checked for consistency; and the
+framework does that based on the `note: Note` argument type  
+generally speaking, FastAPI will automatically check the types of the arguments,
+based on such *type hints*, and will return a 422 error if the types do not
+match  
+similarly, having typed the return value of the function as `Note`, FastAPI will
+automatically convert the returned object to JSON, and set the appropriate HTTP
+status code (201)
+```python main.py
+# !className(1) separator
+# !diff(2:2) -
+# !diff(3:3) +
+# !className(6) separator
+# !diff(9:9) +
+# !className(12) separator
+# !diff(14:22) +
+# !className(25) separator
+# !diff(29:40) +
+........
+VERSION = "01b"
+VERSION = "02a"
+from contextlib import asynccontextmanager
+from typing import Annotated
+........
+from sqlmodel import SQLModel, create_engine
+from sqlmodel import Session
+from sqlmodel import Field
+SQLITE_URL = f"sqlite:///notes.db"
+engine = create_engine(SQLITE_URL)
+........
+SessionDep = Annotated[Session, Depends(get_session)]
+# for now we'll use a single type for all operations on notes
+# BUT we'll see later on how to improve that
+class Note(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    title: str
+    description: str
+    done: bool = False
+
+
+# Create the FastAPI app with the lifespan context manager
+app = FastAPI(lifespan=lifespan)
+........
+async def root():
+    return dict(message="Hello FastAPI World!",
+                version=VERSION)
+
+"""
+http :8000/api/notes title="Devoirs" description="TP Backend"
+http :8000/api/notes title="Papiers" description="Nouveau Passeport"
+http :8000/api/notes title="Dentiste" description="ouille !" done:=true
+"""
+@app.post("/api/notes")
+def create_note(note: Note, session: SessionDep) -> Note:
+    session.add(note)
+    session.commit()
+    session.refresh(note)
+    return note
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 02b -  GET /api/notes endpoint' label='02b GET /api/notes endpoint' tooltip='changes in ./main.py'>
+### 02a -> 02b - changes in <code>main.py</code>
+#### is that simple or what ?
+
+we will see later on how to control the fields that are returned in the JSON response
+```python main.py
+# !className(1) separator
+# !diff(2:2) -
+# !diff(3:3) +
+# !className(6) separator
+# !diff(10:10) +
+# !className(13) separator
+# !diff(17:24) +
+........
+VERSION = "02a"
+VERSION = "02b"
+from contextlib import asynccontextmanager
+from typing import Annotated
+........
+from sqlmodel import SQLModel, create_engine
+from sqlmodel import Session
+from sqlmodel import Field
+from sqlmodel import select
+SQLITE_URL = f"sqlite:///notes.db"
+engine = create_engine(SQLITE_URL)
+........
+    session.commit()
+    session.refresh(note)
+    return note
+
+"""
+http :8000/api/notes
+"""
+@app.get("/api/notes")
+def get_notes(session: SessionDep) -> list[Note]:
+    notes = session.exec(select(Note)).all()
+    return notes
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 02c -  GET /api/notes/id endpoint' label='02c GET /api/notes/id endpoint' tooltip='changes in ./main.py'>
+### 02b -> 02c - changes in <code>main.py</code>
+#### how to get all the details on a specific note
+
+as you can see, the code is as simple as it gets  
+here again, FastAPI takes advantage of the type hints to automatically return a JSON-encoded dictionary,
+and we control the actual set of fields exposed in the result by stating that the function returns a `Note` object
+```python main.py
+# !className(1) separator
+# !diff(2:2) -
+# !diff(3:3) +
+# !className(6) separator
+# !diff(10:17) +
+........
+VERSION = "02b"
+VERSION = "02c"
+from contextlib import asynccontextmanager
+from typing import Annotated
+........
+def get_notes(session: SessionDep) -> list[Note]:
+    notes = session.exec(select(Note)).all()
+    return notes
+
+"""
+http :8000/api/notes/1
+"""
+@app.get("/api/notes/{note_id}")
+def get_note(note_id: int, session: SessionDep) -> Note | None:
+    note = session.get(Note, note_id)
+    return note
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 03a -  expose static files' label='03a expose static files' tooltip='changes in ./main.py'>
+### 02c -> 03a - changes in <code>main.py</code>
+#### expose /static/ folder with the CSS style
+
+ok so at this point we want to expose a new endpoint, `/front/notes`, which will
+return the HTML page to display, and later on interact with, the notes.
+
+in order to do that, we need to expose some **static content**; for starters we have
+a stylesheet, that we store in `static/style.css`; we're not going to detail the
+CSS here, as we want to focus on the backend side of things
+
+but it's important that the browser can access this file; and the way to do that
+as shown here, by "mounting" the local `static` folder to the `/static` URL.
+```python main.py
+# !className(1) separator
+# !diff(2:2) -
+# !diff(3:3) +
+# !diff(8:8) +
+# !className(11) separator
+# !diff(15:19) +
+........
+VERSION = "02c"
+VERSION = "03a"
+from contextlib import asynccontextmanager
+from typing import Annotated
+from fastapi import FastAPI
+from fastapi import Depends
+from fastapi.staticfiles import StaticFiles
+from sqlmodel import SQLModel, create_engine
+from sqlmodel import Session
+........
+def get_note(note_id: int, session: SessionDep) -> Note | None:
+    note = session.get(Note, note_id)
+    return note
+
+"""
+http :8000/static/css/style.css
+"""
+app.mount("/static", StaticFiles(directory="static"), name="static")
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 03b - 1/2 GET /front/notes returns templated HTML' label='03b GET /front/notes returns templated HTML' tooltip='changes in ./main.py'>
+### 03a -> 03b - changes in <code>main.py</code>
+#### serve a HTML page from a Jinja template
+
+this new `/front/notes/` endpoint will return a HTML page, which is rendered from a Jinja template
+
+### templating
+
+worth being noted here, is the way the data is passed from Python to the template, by setting the `context` parameter of the `render_template` function
+
+### fetching data
+
+another important point is this:  
+for fetching the list of notes, we could have gotten it from the database directly, using this code
+
+```python
+def notes_page(request: Request, session: SessionDep):
+    notes = session.exec(select(Note)).all()
+    return templates.TemplateResponse(
+        request=request,
+        name="notes.html.j2",
+        context={"notes": notes})
+```
+
+and that would have worked well  
+however we choose to use the `/api/notes` endpoint instead, which is a bit more complex,
+but allows for better flexibility in the long run, especially because the first step for scaling up will be to separate, on the one hand, the service that serves the frontend, and on the other hand the API service itself (and the DB service as well, for that matter)
+```python main.py
+# !className(1) separator
+# !diff(2:2) -
+# !diff(3:3) +
+# !diff(6:7) +
+# !diff(11:13) +
+# !className(16) separator
+# !diff(20:39) +
+........
+VERSION = "03a"
+VERSION = "03b"
+from contextlib import asynccontextmanager
+from typing import Annotated
+import requests
+
+from fastapi import FastAPI
+from fastapi import Depends
+from fastapi.staticfiles import StaticFiles
+from fastapi import Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from sqlmodel import SQLModel, create_engine
+from sqlmodel import Session
+........
+http :8000/static/css/style.css
+"""
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+templates = Jinja2Templates(directory="templates")
+
+"""
+http :8000/front/notes
+"""
+@app.get("/front/notes", response_class=HTMLResponse)
+def notes_page(request: Request, session: SessionDep):
+    # get the notes through the API, not directly from the database
+    base_url = request.url.scheme + "://" + request.url.netloc
+    url = base_url + "/api/notes"
+    response = requests.get(url)
+    if not (200 <= response.status_code < 300):
+        raise Exception(f"Error {response.status_code} while getting notes")
+    notes = response.json()
+    return templates.TemplateResponse(
+        request=request,
+        name="notes.html.j2",
+        context={"notes": notes})
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 03b - 2/2 GET /front/notes returns templated HTML' label='03b - 2/2' tooltip='new file ./templates/notes.html.j2'>
+### 03b : new file <code>notes.html.j2</code>
+#### a Jinja template for notes
+
+here's the Jinja template for the notes page;  
+as you can see it's mostly HTML, with a few Jinja tags to insert the data from the FastAPI backend.
+
+The Python code renders this template with a *context*, which is a dictionary of variables that are passed to the template.
+
+In this template we see a few of the Jinja features in action:
+
+### `{% for note in notes %}`
+
+For example this template iterates over the `notes` variable, which is expected to be a list of dictionaries, each one representing a note.
+
+Once rendered, this template will thus contain as many `<li>` elements as there are notes in the `notes` list.
+
+### ` {{ note.title }}`
+
+Using the `{{ ... }}` syntax, we can insert the value of a variable in the template.
+
+### `{% if note.done %}`
+
+We can also see in this example a use of a conditional statement.
+```html notes.html.j2
+<!-- !diff(1:26) + -->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <title>My todo notes</title>
+</head>
+
+<body>
+    <h1>My todo notes</h1>
+    <ul class="notes">
+        {% for note in notes %}
+        <li class="note">
+            <div class="title">{{ note.title }}</div>
+            <div class="line">
+                <span>{{ note.description }}</span>
+                <input type="checkbox" {% if note.done %}checked{%endif%} />
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+</body>
+
+</html>
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 04 -  redirect / to /front/notes' label='04 redirect / to /front/notes' tooltip='changes in ./main.py'>
+### 03b -> 04 - changes in <code>main.py</code>
+#### a simple redirect
+
+generally, people will just type a URL with the domain name in their browser; i.e.  
+`https://awesomenotes.io/`  
+and not  
+`https://awesomenotes.io/front/notes`  
+
+so it's good practice that the `/` URL redirects to the `/front/notes` URL, which is what we do here
+
+and in order to still get a way to see the current version of the API, we pass
+another variable to the template context; this is used in the `.j2` template
+(not shown here) to display the current version of the API
+```python main.py
+# !className(1) separator
+# !diff(2:2) -
+# !diff(3:3) +
+# !className(6) separator
+# !diff(10:10) +
+# !className(13) separator
+# !diff(16:17) -
+# !diff(18:18) +
+# !className(21) separator
+# !diff(25:25) -
+# !diff(29:29) -
+# !diff(30:30) +
+........
+VERSION = "03b"
+VERSION = "04"
+from contextlib import asynccontextmanager
+from typing import Annotated
+........
+from fastapi.staticfiles import StaticFiles
+from fastapi import Request
+from fastapi.responses import HTMLResponse
+from fastapi.responses import RedirectResponse
+from fastapi.templating import Jinja2Templates
+from sqlmodel import SQLModel, create_engine
+........
+@app.get("/")
+async def root():
+    return dict(message="Hello FastAPI World!",
+                version=VERSION)
+    return RedirectResponse(url="/front/notes")
+"""
+http :8000/api/notes title="Devoirs" description="TP Backend"
+........
+    response = requests.get(url)
+    if not (200 <= response.status_code < 300):
+        raise Exception(f"Error {response.status_code} while getting notes")
+    notes = response.json()
+    return templates.TemplateResponse(
+        request=request,
+        name="notes.html.j2",
+        context={"notes": notes})
+        context={"version": VERSION, "notes": notes})
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 05 -  PATCH /api/notes endpoint to change a note' label='05 PATCH /api/notes endpoint to change a note' tooltip='changes in ./main.py'>
+### 04 -> 05 - changes in <code>main.py</code>
+#### allow callers to modify a note
+
+It's cool to be able to create a note, but we also want to be able to modify it
+
+it is the purpose of this new `PATCH` endpoint
+
+Please note in this code:
+
+- the use of the `Body` annotation; this means that the `payload` argument is
+  expected to be in the body of the request, and not in the URL or headers
+- again we use the `Note` class to define the type of the payload; this means that
+  FastAPI will automatically check that the incoming data is consistent with the
+  `Note` class, and will return a 422 error if it is not
+- also interesting, this line  
+  `db_note.sqlmodel_update(payload.model_dump(exclude_unset=True))`  
+  which allow us to safely update the note with the new values;  
+  compare this with a tedious code were we would consider each field one by one,
+  checking of that field is provided or not by the caller, and update the object
+  accordingly  
+  clearly this one-liner is much more readable and maintainable !
+```python main.py
+# !className(1) separator
+# !diff(2:2) -
+# !diff(3:3) +
+# !className(6) separator
+# !diff(10:10) +
+# !className(13) separator
+# !diff(17:39) +
+........
+VERSION = "04"
+VERSION = "05"
+from contextlib import asynccontextmanager
+from typing import Annotated
+........
+from fastapi.responses import HTMLResponse
+from fastapi.responses import RedirectResponse
+from fastapi.templating import Jinja2Templates
+from fastapi import Body
+from sqlmodel import SQLModel, create_engine
+from sqlmodel import Session
+........
+        request=request,
+        name="notes.html.j2",
+        context={"version": VERSION, "notes": notes})
+
+
+"""
+http PATCH :8000/api/notes/1 done:=true
+http PATCH :8000/api/notes/1 description="TP Backend FastAPI"
+"""
+@app.patch("/api/notes/{note_id}", response_model=Note)
+def update_note(
+    note_id: int,
+    session: SessionDep,
+    payload: Annotated[Note, Body(...)],
+):
+    db_note = session.get(Note, note_id)
+    if not db_note:
+        raise HTTPException(status_code=404, detail=f"Note {note_id} not found")
+    # a class-independant way to do the update
+    db_note.sqlmodel_update(payload.model_dump(exclude_unset=True))
+    # commit the changes to the database
+    session.add(db_note)
+    session.commit()
+    session.refresh(db_note)
+    # return the updated note
+    return db_note
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 06 -  clicking done is published to the backend' label='06 clicking done is published to the backend' tooltip='new file ./static/js/update-backend.js'>
+### 06 : new file <code>update-backend.js</code>
+#### a JS script to update the backend
+
+here we define a (globally visible) function `note_done_changed`; its purpose is to be bound to the `done` checkbox of each note in the UI
+
+and as you can see its job is simply to post a `PATCH` api request to the
+backend, with the new value of the `done` checkbox
+```js update-backend.js
+// !diff(1:20) +
+// the callback attached to clicking the "done" checkbox
+// it is used verbatim in the HTML template
+async function note_done_changed(elt, nodeId) {
+    const done = elt.checked
+    const url = `/api/notes/${nodeId}`
+    const data = { done: done }
+    const response = await fetch(url, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    })
+    if (response.ok) {
+      const data = await response.json()
+      console.log(`${url} returned`, data)
+    } else {
+      console.error("Error updating note done status:", response.statusText)
+    }
+  }
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 07 - 1/2 the UI can create a note' label='07 the UI can create a note' tooltip='changes in ./templates/notes.html.j2'>
+### 06 -> 07 - changes in <code>notes.html.j2</code>
+#### a new form in the template
+
+This is a typical example of a HTML `<form>` element. As the name suggests, it groups all the input fields that are needed for a specific API call, here a note creation.
+
+Thanks to the JS code added in the same step, clicking the submit button - or hitting the enter key - will trigger the API call that will create a new note.
+
+**note**: you could be tempted to create a new note in the UI upon completion of the API call. However we're not going to do it that way, because later on we will implement a broadcast system where the server will notify all clients of a new note. This way, all clients will be able to see the new note without having to refresh the page.  
+And so in particular, the UI that has created the note will create the corresponding UI element just like any other UI.
+```html notes.html.j2
+<!-- !className(1) separator -->
+<!-- !diff(4:12) + -->
+<!-- !className(16) separator -->
+<!-- !diff(19:19) + -->
+........
+<body>
+    <h1>My todo notes v{{version}}</h1>
+    <form id="add-note-form" action="/api/notes" method="POST">
+        <fieldset>
+            <legend>Add a new note</legend>
+            <input type="text" name="title" placeholder="Title" required>
+            <input type="text" name="description" placeholder="Description" required>
+            <button type="submit">Add Note</button>
+        </fieldset>
+    </form>
+
+    <ul class="notes">
+        {% for note in notes %}
+        <li class="note">
+........
+    </ul>
+    <script src="{{ url_for('static', path='/js/update-backend.js') }}"></script>
+    <script src="{{ url_for('static', path='/js/forms-use-json.js') }}"></script>
+</body>
+</html>
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 07 - 2/2 the UI can create a note' label='07 - 2/2' tooltip='new file ./static/js/forms-use-json.js'>
+### 07 : new file <code>forms-use-json.js</code>
+#### HTML forms with JSON
+
+HTML forms can have an `action` attribute that points to a URL. When the form is submitted, the browser sends a request to that URL with the form data. The server can then process the data and return a response.
+
+However, the default way for forms to do that relies on older technologies like `application/x-www-form-urlencoded` or `multipart/form-data`. These formats are not as flexible or powerful as JSON.
+
+This script allows you to use JSON to send form data; it is generic and can be used with any form. It uses the `fetch` API to send the data as JSON to the server.
+
+Note the use of the call to `event.preventDefault()` to prevent the default form submission behavior.
+```js forms-use-json.js
+// !diff(1:26) +
+// reprogram all forms to send their fields as JSON
+
+document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll('form').forEach((form) => {
+        const formToJSON = form => Object.fromEntries(new FormData(form))
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault()
+
+          // use the action= attribute of the <form>
+          //  to determine where to send the data
+          const action = form.action
+          const json = formToJSON(form)
+          const response = await fetch(action, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(json),
+          })
+          if (!response.ok) {
+            console.error(`Error submitting form at ${action} : `, response.statusText)
+            return
+          }
+          const decoded = await response.json()
+          console.log("response", decoded)
+        })
+      })
+    })
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 08 -  DELETE /api/notes/id' label='08 DELETE /api/notes/id' tooltip='changes in ./main.py'>
+### 07 -> 08 - changes in <code>main.py</code>
+#### DELETE /api/notes/id endpoint to delete a note
+
+nothing really special here. Just a typical DELETE endpoint that will delete a
+note from the database.
+```python main.py
+# !className(1) separator
+# !diff(2:2) -
+# !diff(3:3) +
+# !className(6) separator
+# !diff(10:23) +
+........
+VERSION = "07"
+VERSION = "08"
+from contextlib import asynccontextmanager
+from typing import Annotated
+........
+    session.refresh(db_note)
+    # return the updated note
+    return db_note
+
+
+"""
+http DELETE :8000/api/notes/3
+"""
+@app.delete("/api/notes/{note_id}")
+def delete_note(note_id: int, session: SessionDep):
+    db_note = session.get(Note, note_id)
+    if not db_note:
+        raise HTTPException(status_code=404, detail=f"Note {note_id} not found")
+    # delete the note
+    session.delete(db_note)
+    session.commit()
+    return db_note
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 09 - 1/2 the UI can delete a note' label='09 the UI can delete a note' tooltip='changes in ./static/js/update-backend.js'>
+### 08 -> 09 - changes in <code>update-backend.js</code>
+#### a new function in JS
+
+we define the new function `note_delete` in `update-backend.js` to delete a note.
+
+it simply sends a DELETE request to the backend with the note ID.
+
+```js update-backend.js
+// !className(1) separator
+// !diff(5:21) +
+........
+      console.error("Error updating note done status:", response.statusText)
+    }
+  }
+
+
+async function note_delete(elt, nodeId) {
+  const url = `/api/notes/${nodeId}`;
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+  if (response.ok) {
+    const data = await response.json();
+    console.log(`${url} returned`, data);
+  } else {
+    console.error("Error deleting note:", response.statusText);
+  }
+}
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 09 - 2/2 the UI can delete a note' label='09 - 2/2' tooltip='changes in ./templates/notes.html.j2'>
+### 08 -> 09 - changes in <code>notes.html.j2</code>
+#### add a button to delete a note
+
+the HTML template now also create a button to delete the note  
+notice how the note id is passed to function `note_delete`
+```html notes.html.j2
+<!-- !className(1) separator -->
+<!-- !diff(5:5) - -->
+<!-- !diff(6:8) + -->
+........
+    <ul class="notes">
+        {% for note in notes %}
+        <li class="note">
+            <div class="title">{{ note.title }}</div>
+            <div class="title">{{ note.title }}
+                <button class="delete-button" onclick="note_delete(this, {{ note.id }})">🗑</button>
+            </div>
+            <div class="line">
+                <span>{{ note.description }}</span>
+                <input type="checkbox" {% if note.done %}checked{%endif%}
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 10a -  fine-grained types NoteCreate NoteUpdate Note' label='10a fine-grained types NoteCreate NoteUpdate Note' tooltip='changes in ./main.py'>
+### 09 -> 10a - changes in <code>main.py</code>
+#### more elaborate typing
+
+until now we had only one `Note` type; in practice it is often useful to define
+several several types for the same entity, because you do not expect all the
+fields to be present in all cases.
+
+for example here what we choose to do is to define:
+
+- `NoteCreate`, the type used for creating a note, that only has a `title` and a `description`;
+  so notes are always created with their `done` field set to `False`;
+- `NoteUpdate`, which contains the same 2 fields augmented with the `done` field; indeed we want it to be possible to change all 3 fields - at some point one will want to change `done` to `True`, and users can also change the title and description;
+- `Note`, the full type that contains all 3 fields plus the `id` field
+```python main.py
+# !className(1) separator
+# !diff(2:2) -
+# !diff(3:3) +
+# !className(6) separator
+# !diff(8:10) -
+# !diff(11:21) +
+# !diff(23:25) -
+........
+VERSION = "09"
+VERSION = "10a"
+from contextlib import asynccontextmanager
+from typing import Annotated
+........
+SessionDep = Annotated[Session, Depends(get_session)]
+# for now we'll use a single type for all operations on notes
+# BUT we'll see later on how to improve that
+class Note(SQLModel, table=True):
+# in this version we define several models for a note
+# that describe which fields exactly we want to support / expose
+# in each operation of the API
+class NoteCreate(SQLModel):
+    title: str | None = Field(default=None, description="le titre de la note")
+    description: str | None = Field(default=None, description="Le texte de la note")
+
+class NoteUpdate(NoteCreate):
+    done: bool = Field(default=False, description="La tâche est-elle terminée ?")
+
+class Note(NoteUpdate, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    title: str
+    description: str
+    done: bool = False
+# Create the FastAPI app with the lifespan context manager
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 10b -  use the new types' label='10b use the new types' tooltip='changes in ./main.py'>
+### 10a -> 10b - changes in <code>main.py</code>
+#### using the new types
+
+we can now take advantage of these different types to annotate the various methods, and FastAPI will automatically adjust the allowed fields in each request body accordingly
+
+in particular with the choice made above, it is no longer possible to pass a value for `done` at creation time - and this is by design
+```python main.py
+# !className(1) separator
+# !diff(2:2) -
+# !diff(3:3) +
+# !className(6) separator
+# !diff(10:10) -
+# !diff(11:11) +
+# !diff(14:15) -
+# !diff(16:18) +
+# !diff(20:21) -
+# !diff(22:23) +
+# !className(26) separator
+# !diff(30:30) -
+# !diff(31:31) +
+........
+VERSION = "10a"
+VERSION = "10b"
+from contextlib import asynccontextmanager
+from typing import Annotated
+........
+"""
+http :8000/api/notes title="Devoirs" description="TP Backend"
+http :8000/api/notes title="Papiers" description="Nouveau Passeport"
+http :8000/api/notes title="Dentiste" description="ouille !" done:=true
+http :8000/api/notes title="Dentiste" description="ouille !"
+"""
+@app.post("/api/notes")
+def create_note(note: Note, session: SessionDep) -> Note:
+    session.add(note)
+def create_note(note: NoteCreate, session: SessionDep) -> Note:
+    db_note = Note.model_validate(note)
+    session.add(db_note)
+    session.commit()
+    session.refresh(note)
+    return note
+    session.refresh(db_note)
+    return db_note
+"""
+http :8000/api/notes
+........
+def update_note(
+    note_id: int,
+    session: SessionDep,
+    payload: Annotated[Note, Body(...)],
+    payload: Annotated[NoteUpdate, Body(...)],
+):
+    db_note = session.get(Note, note_id)
+    if not db_note:
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 11a - 1/2 the WebsocketBroadcaster class' label='11a the WebsocketBroadcaster class' tooltip='changes in ./main.py'>
+### 10b -> 11a - changes in <code>main.py</code>
+#### create a broadcaster instance
+
+our application needs to maintain a list of connected clients, so the main program creates one instance of the `WebSocketBroadcaster` class - this is known as a singleton pattern.
+
+next we'll see how to take advantage of this instance for reacting on incoming websocket connections
+```python main.py
+# !className(1) separator
+# !diff(2:2) -
+# !diff(3:3) +
+# !className(6) separator
+# !diff(10:15) +
+........
+VERSION = "10b"
+VERSION = "11a"
+from contextlib import asynccontextmanager
+from typing import Annotated
+........
+from sqlmodel import Session
+from sqlmodel import Field
+from sqlmodel import select
+
+from broadcaster import WebSocketBroadcaster
+
+# create a singleton object
+websocket_broadcaster = WebSocketBroadcaster()
+
+SQLITE_URL = f"sqlite:///notes.db"
+engine = create_engine(SQLITE_URL)
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 11a - 2/2 the WebsocketBroadcaster class' label='11a - 2/2' tooltip='new file ./broadcaster.py'>
+### 11a : new file <code>broadcaster.py</code>
+#### a broadcaster class
+
+for starters, we define in `broadcaster.py` a class `WebSocketBroadcaster`, that will be in charge of
+
+- registering all the connected clients (i.e. browsers)
+- broadcasting messages to all the clients
+- remove then ones that are disconnected
+
+we will see in a bit how this is used in the application
+```python broadcaster.py
+# !diff(1:34) +
+from typing import Literal
+
+import asyncio
+
+from fastapi import WebSocket
+
+Action = Literal["create", "update", "delete"]
+
+class WebSocketBroadcaster:
+    """
+    registers active websocket connections
+    and broadcasts messages to all of them
+    """
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+
+    # cannot import Note here, to avoid circular import
+    async def broadcast(self, action: Action, note: "Note"):
+        payload = { "action": action, "note": dict(note) }
+        coros = [ws.send_json(payload) for ws in self.active_connections]
+        results = await asyncio.gather(*coros, return_exceptions=True)
+
+        # Clean up any that failed
+        for ws, result in zip(self.active_connections.copy(), results):
+            if isinstance(result, Exception):
+                self.disconnect(ws)
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 11b -  /ws endpoint' label='11b /ws endpoint' tooltip='changes in ./main.py'>
+### 11a -> 11b - changes in <code>main.py</code>
+#### the /ws endpoint
+
+so far our application has several endpoints that are all pure HTTP endpoints -
+they react to GET, POST and similar verbs;  
+when it comes to websockets, things are a bit different, there is no verb, and
+the connection is kept open for a long time so the endpoint has a rather
+different structure, primarily it describes the behaviour of the server **during
+the whole connection lifetime**, rather than just the one request and one
+response that we have seen so far
+
+so here, we basically say this:  
+each time a browser connects to this `/ws/` endpoint:
+- first we register the client in our broadcaster instance
+- then we keep the connection open indefinitely, and we wait for messages from the client
+
+it turns out in our application, we use websockets **only** as a back channel to
+send messages from the server to the client, so we don't need to do anything
+with the messages that are sent by the client
+```python main.py
+# !className(1) separator
+# !diff(2:2) -
+# !diff(3:3) +
+# !className(6) separator
+# !diff(10:10) +
+# !className(13) separator
+# !diff(17:27) +
+........
+VERSION = "11a"
+VERSION = "11b"
+from contextlib import asynccontextmanager
+from typing import Annotated
+........
+from fastapi.responses import RedirectResponse
+from fastapi.templating import Jinja2Templates
+from fastapi import Body
+from fastapi import WebSocket, WebSocketDisconnect
+from sqlmodel import SQLModel, create_engine
+from sqlmodel import Session
+........
+    session.delete(db_note)
+    session.commit()
+    return db_note
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket_broadcaster.connect(websocket)
+    try:
+        while True:
+            # Optional: handle incoming messages if you want, or just keep alive
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        websocket_broadcaster.disconnect(websocket)
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 11c -  inject ws-listener.js in template' label='11c inject ws-listener.js in template' tooltip='new file ./static/js/ws-listener.js'>
+### 11c : new file <code>ws-listener.js</code>
+#### the browser listens on the WS channel
+
+in this new JS file, we program the browser: it will initialize a WebSocket
+connection to the server and handle incoming messages; for now in this early
+version, we simply assume incoming messages contain JSON data, so we docode it
+and display it in the console
+
+this new script is then simply included in the HTML template (we omit this diff here)
+
+so at this point, our application has the basic WS infrastructure:
+
+- each time a browser opens the notes page, it connects to the server on the `/ws/` endpoint
+- the server knows the list of all connected clients
+- also the server can detect when a client disconnects
+
+we still need - see next step - to take advantage of that back channel, and to
+have the server notify its clients of all the changes made to the notes
+```js ws-listener.js
+// !diff(1:23) +
+document.addEventListener("DOMContentLoaded",
+    // connect to the WebSocket server on page load
+    () => {
+        const ws = new WebSocket(`ws://${window.location.host}/ws`);
+
+        ws.onopen = () => {
+            console.log("WebSocket connection opened");
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            console.log("Received data:", data);
+        };
+
+        ws.onclose = () => {
+            console.log("WebSocket connection closed");
+        };
+
+        ws.onerror = (error) => {
+            console.error("WebSocket error:", error);
+        };
+    }
+)
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 12 -  the api endpoints broadcast the changes on WS' label='12 the api endpoints broadcast the changes on WS' tooltip='changes in ./main.py'>
+### 11c -> 12 - changes in <code>main.py</code>
+#### changes are broadcast to all clients
+
+now that we have a back channel for the server to talk to clients, let 's use it
+to broadcast changes to all clients
+
+this now is a pretty straightforward change;
+as you can see, the messages that are sent on the ws channel are all of the form
+
+```json
+{
+  "action": "create",   # or "update" or "delete"
+  "note": {
+    ... the details of the note
+  }
+}
+```
+```python main.py
+# !className(1) separator
+# !diff(2:2) -
+# !diff(3:3) +
+# !className(6) separator
+# !diff(10:10) -
+# !diff(11:11) +
+# !diff(16:16) +
+# !className(19) separator
+# !diff(23:23) -
+# !diff(24:24) +
+# !className(28) separator
+# !diff(32:32) +
+# !className(35) separator
+# !diff(39:39) -
+# !diff(40:40) +
+# !diff(47:47) +
+........
+VERSION = "11c"
+VERSION = "12"
+from contextlib import asynccontextmanager
+from typing import Annotated
+........
+http :8000/api/notes title="Dentiste" description="ouille !"
+"""
+@app.post("/api/notes")
+def create_note(note: NoteCreate, session: SessionDep) -> Note:
+async def create_note(note: NoteCreate, session: SessionDep) -> Note:
+    db_note = Note.model_validate(note)
+    session.add(db_note)
+    session.commit()
+    session.refresh(db_note)
+    await websocket_broadcaster.broadcast(action="create", note=db_note)
+    return db_note
+"""
+........
+http PATCH :8000/api/notes/1 description="TP Backend FastAPI"
+"""
+@app.patch("/api/notes/{note_id}", response_model=Note)
+def update_note(
+async def update_note(
+    note_id: int,
+    session: SessionDep,
+    payload: Annotated[NoteUpdate, Body(...)],
+........
+    session.add(db_note)
+    session.commit()
+    session.refresh(db_note)
+    await websocket_broadcaster.broadcast(action="update", note=db_note)
+    # return the updated note
+    return db_note
+........
+http DELETE :8000/api/notes/3
+"""
+@app.delete("/api/notes/{note_id}")
+def delete_note(note_id: int, session: SessionDep):
+async def delete_note(note_id: int, session: SessionDep):
+    db_note = session.get(Note, note_id)
+    if not db_note:
+        raise HTTPException(status_code=404, detail=f"Note {note_id} not found")
+    # delete the note
+    session.delete(db_note)
+    session.commit()
+    await websocket_broadcaster.broadcast(action="delete", note=db_note)
+    return db_note
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 13a - 1/2 handle incoming WS messages in the frontend' label='13a handle incoming WS messages in the frontend' tooltip='changes in ./static/js/ws-listener.js'>
+### 12 -> 13a - changes in <code>ws-listener.js</code>
+#### bind the callbacks to events
+
+we can easily  connect the callbacks to the events that we want to listen to
+
+```js ws-listener.js
+// !className(1) separator
+// !diff(5:19) +
+........
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            console.log("Received data:", data);
+            // Handle the received data as needed
+            const { action, note } = data;
+            switch (action) {
+                case "create":
+                    createNoteElement(note);
+                    break;
+                case "update":
+                    updateNoteElement(note);
+                    break;
+                case "delete":
+                    deleteNoteElement(note.id);
+                    break;
+                default:
+                    console.warn("Unknown action:", action);
+            }
+        };
+        ws.onclose = () => {
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 13a - 2/2 handle incoming WS messages in the frontend' label='13a - 2/2' tooltip='new file ./static/js/clientside-rendering.js'>
+### 13a : new file <code>clientside-rendering.js</code>
+#### the skeleton for actions callbacks
+
+in this first, incomplete step, we create a new JS file in which we create 3
+callback functions that will handle events related to changes in the DB.
+
+like always, this new JS file is also mentioned in the HTML template (not detailed here)
+```js clientside-rendering.js
+// !diff(1:11) +
+function createNoteElement(note) {
+    console.log("Creating note:", note);
+}
+
+function updateNoteElement(note) {
+    console.log("Updating note:", note);
+}
+
+function deleteNoteElement(noteId) {
+    console.log("Deleting note with ID:", noteId);
+}
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 13b -  define id=note-{id} to the note &lt;li&gt;' label='13b define id=note-{id} to the note &lt;li&gt;' tooltip='changes in ./templates/notes.html.j2'>
+### 13a -> 13b - changes in <code>notes.html.j2</code>
+#### keep track of note ids in the HTML
+
+with this simple change, we can now keep track of the ids of the notes in the
+HTML tree
+
+this will come in handy in the next steps, when we will need to actually apply
+changes (received on the ws channel) to the corresponding notes in the DOM.
+```html notes.html.j2
+<!-- !className(1) separator -->
+<!-- !diff(4:4) - -->
+<!-- !diff(5:5) + -->
+........
+    <ul class="notes">
+        {% for note in notes %}
+        <li class="note">
+        <li id="note-{{note.id}}" class="note">
+            <div class="title">{{ note.title }}
+                <button class="delete-button" onclick="note_delete(this, {{ note.id }})">🗑</button>
+            </div>
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 13c -  CSR on note creation' label='13c CSR on note creation' tooltip='changes in ./static/js/clientside-rendering.js'>
+### 13b -> 13c - changes in <code>clientside-rendering.js</code>
+#### rendering new notes
+
+so, to summarize; at this point:
+
+- when the browser connects to the server, the page rendered by the server is
+  obtained from the template; this is called SSR (Server Side Rendering)
+- however when a new note gets created (either throught the API or by another
+  browser), the server broadcasts the new note to all clients
+
+and so at this point we still have to write the code for the browser to display
+the new note; and this is called CSR (Client Side Rendering)
+
+there is obviously some redundancy here; indeed it is important that the CSR
+code creates a structure that is exactly similar to what is served by SSR in the
+first place
+
+for now, we simply duplicate - or rather, mimick - the SSR code into our `clientside-rendering.js` file
+
+in this step, we address note creation
+```js clientside-rendering.js
+// !className(1) separator
+// !diff(3:3) -
+// !diff(4:18) +
+........
+function createNoteElement(note) {
+    console.log("Creating note:", note);
+    const elt = document.createElement("li");
+    elt.classList.add("note");
+    elt.id = `note-${note.id}`;
+    const html = `
+    <div class="title">${note.title}
+        <button class="delete-button" onclick="note_delete(this, ${note.id})">🗑</button>
+    </div>
+    <div class="line">
+        <span>${note.description}</span>
+        <input type="checkbox" ${note.done ? "checked" : ""}
+        onchange="note_done_changed(this, ${note.id})" />
+    </div>
+`
+    elt.innerHTML = html;
+    document.querySelector("ul.notes").appendChild(elt);
+}
+function updateNoteElement(note) {
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 13d -  CSR on note update' label='13d CSR on note update' tooltip='changes in ./static/js/clientside-rendering.js'>
+### 13c -> 13d - changes in <code>clientside-rendering.js</code>
+#### CSR for note updates
+
+this now is about client-side rendering of note updates; this is a tad more
+tricky than pure creation, in particular we're using the fact that notes
+&lt;li&gt; elements have their `id` based on the note DB id, so we can easily
+find the corresponding DOM element to update
+
+```js clientside-rendering.js
+// !className(1) separator
+// !diff(4:4) -
+// !diff(5:13) +
+........
+}
+function updateNoteElement(note) {
+    console.log("Updating note:", note);
+    const id = note.id;
+    const elt = document.querySelector(`#note-${id}`);
+    if (!elt) {
+        console.warn("Note element not found for ID:", id);
+        return;
+    }
+    elt.querySelector(".title").textContent = note.title;
+    elt.querySelector("span").textContent = note.description;
+    elt.querySelector("input[type='checkbox']").checked = note.done ? "checked" : "";
+}
+function deleteNoteElement(noteId) {
+```
+
+</TableOfContentsItem>
+<TableOfContentsItem topic='step 13e -  CSR on note deletion' label='13e CSR on note deletion' tooltip='changes in ./static/js/clientside-rendering.js'>
+### 13d -> 13e - changes in <code>clientside-rendering.js</code>
+#### CSR deletion
+
+and finally we code the way the browser must react upon note deletion; it is an easy task
+
+at this point we have a fully functional app, with which we can safely create,
+update and delete notes in a consistent way across all clients, and ensure we
+always get an accurate view of the state of all notes
+```js clientside-rendering.js
+// !className(1) separator
+// !diff(4:4) -
+// !diff(5:10) +
+........
+}
+function deleteNoteElement(noteId) {
+    console.log("Deleting note with ID:", noteId);
+    const elt = document.querySelector(`#note-${noteId}`);
+    if (elt) {
+        elt.remove();
+    } else {
+        console.warn("Note element not found for ID:", noteId);
+    }
+}
+```
+
+</TableOfContentsItem>
+
+
+## conclusion
+
+see the conclusion at the bottom of the [scrollycoding page](scrollycoding/)
