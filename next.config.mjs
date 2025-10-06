@@ -9,7 +9,6 @@ const nextConfig = {
   // Configure `pageExtensions`` to include MDX files
   pageExtensions: ["js", "jsx", "mdx", "ts", "tsx"],
   // Optionally, add any other Next.js config below
-  // when deploying on GitHub Pages we end up under
   // no longer needed as we now use info-mines.paris
   // basePath: isProd ? "/backend-fastapi-notes" : "",
 }
