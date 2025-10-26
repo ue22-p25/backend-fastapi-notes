@@ -466,8 +466,7 @@ another variable to the template context; this is used in the `.j2` template
 # !diff(18:18) +
 # !className(21) separator
 # !diff(25:25) -
-# !diff(29:29) -
-# !diff(30:30) +
+# !diff(26:26) +
 ........
 VERSION = "03b"
 VERSION = "04"
@@ -489,10 +488,6 @@ async def root():
 """
 http :8000/api/notes title="Devoirs" description="TP Backend"
 ........
-    response = requests.get(url)
-    if not (200 <= response.status_code < 300):
-        raise Exception(f"Error {response.status_code} while getting notes")
-    notes = response.json()
     return templates.TemplateResponse(
         request=request,
         name="notes.html.j2",
