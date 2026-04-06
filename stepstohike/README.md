@@ -82,7 +82,7 @@ re-syncing yet
 ## from folders to codehike (stepstohike.py)
 
 ```
-./stepstohike.py chain-dirs [--scolly] steps-repo/.steps/*
+./stepstohike.py chain-dirs [--scrolly] steps-repo/.steps/*
 ```
 
 will write on stdout the codehike input  

@@ -121,23 +121,12 @@ SessionDep = Annotated[Session, Depends(get_session)]
 app = FastAPI(lifespan=lifespan)
 ```
 
-## !!steps 02a: POST /api/notes to create notes
+## !!steps 02a: a table to store notes
 ### 01b -> 02a - changes in <code>main.py</code>
-#### a table to store notes, and an API endpoint to create them
+#### a table to store notes
 
 this is typical code to create a table in a database; note the `table=True` passed to the `Note` class  
 this is what defines the actual set of columns in the database table
-
-as far as the API is concerned, we define a `POST` endpoint to create a note  
-in particular, note how minimal the code is; we  don't need to make any check on
-the incoming data, it will automatically be checked for consistency; and the
-framework does that based on the `note: Note` argument type  
-generally speaking, FastAPI will automatically check the types of the arguments,
-based on such *type hints*, and will return a 422 error if the types do not
-match  
-similarly, having typed the return value of the function as `Note`, FastAPI will
-automatically convert the returned object to JSON, and set the appropriate HTTP
-status code (201)
 ```python ! main.py
 # !className(1) separator
 # !diff(2:2) -
@@ -146,8 +135,6 @@ status code (201)
 # !diff(9:9) +
 # !className(12) separator
 # !diff(14:22) +
-# !className(25) separator
-# !diff(29:40) +
 ........
 VERSION = "01b"
 VERSION = "02a"
@@ -172,6 +159,33 @@ class Note(SQLModel, table=True):
 
 # Create the FastAPI app with the lifespan context manager
 app = FastAPI(lifespan=lifespan)
+```
+
+## !!steps 02b: POST /api/notes to create notes
+### 02a -> 02b - changes in <code>main.py</code>
+#### an API endpoint to create notes
+
+as far as the API is concerned, we define a `POST` endpoint to create a note  
+in particular, note how minimal the code is; we  don't need to make any check on
+the incoming data, it will automatically be checked for consistency; and the
+framework does that based on the `note: Note` argument type  
+generally speaking, FastAPI will automatically check the types of the arguments,
+based on such *type hints*, and will return a 422 error if the types do not
+match  
+similarly, having typed the return value of the function as `Note`, FastAPI will
+automatically convert the returned object to JSON, and set the appropriate HTTP
+status code (201)
+```python ! main.py
+# !className(1) separator
+# !diff(2:2) -
+# !diff(3:3) +
+# !className(6) separator
+# !diff(10:21) +
+........
+VERSION = "02a"
+VERSION = "02b"
+from contextlib import asynccontextmanager
+from typing import Annotated
 ........
 async def root():
     return dict(message="Hello FastAPI World!",
@@ -190,24 +204,16 @@ def create_note(note: Note, session: SessionDep) -> Note:
     return note
 ```
 
-## !!steps 02b: GET /api/notes endpoint
-### 02a -> 02b - changes in <code>main.py</code>
+## !!steps 02c: GET /api/notes endpoint
+### 02b -> 02c - changes in <code>main.py</code>
 #### is that simple or what ?
 
 we will see later on how to control the fields that are returned in the JSON response
 ```python ! main.py
 # !className(1) separator
-# !diff(2:2) -
-# !diff(3:3) +
-# !className(6) separator
-# !diff(10:10) +
-# !className(13) separator
-# !diff(17:24) +
-........
-VERSION = "02a"
-VERSION = "02b"
-from contextlib import asynccontextmanager
-from typing import Annotated
+# !diff(5:5) +
+# !className(8) separator
+# !diff(12:19) +
 ........
 from sqlmodel import SQLModel, create_engine
 from sqlmodel import Session
@@ -229,8 +235,8 @@ def get_notes(session: SessionDep) -> list[Note]:
     return notes
 ```
 
-## !!steps 02c: GET /api/notes/id endpoint
-### 02b -> 02c - changes in <code>main.py</code>
+## !!steps 02d: GET /api/notes/id endpoint
+### 02c -> 02d - changes in <code>main.py</code>
 #### how to get all the details on a specific note
 
 as you can see, the code is as simple as it gets  
@@ -262,7 +268,7 @@ def get_note(note_id: int, session: SessionDep) -> Note | None:
 ```
 
 ## !!steps 03a: expose static files
-### 02c -> 03a - changes in <code>main.py</code>
+### 02d -> 03a - changes in <code>main.py</code>
 #### expose /static/ folder with the CSS style
 
 ok so at this point we want to expose a new endpoint, `/front/notes`, which will
@@ -336,7 +342,7 @@ but allows for better flexibility in the long run, especially because the first 
 # !diff(6:7) +
 # !diff(11:13) +
 # !className(16) separator
-# !diff(20:39) +
+# !diff(20:38) +
 ........
 VERSION = "03a"
 VERSION = "03b"
@@ -366,8 +372,7 @@ http :8000/front/notes
 @app.get("/front/notes", response_class=HTMLResponse)
 def notes_page(request: Request, session: SessionDep):
     # get the notes through the API, not directly from the database
-    base_url = request.url.scheme + "://" + request.url.netloc
-    url = base_url + "/api/notes"
+    url = request.url_for("get_notes")
     response = requests.get(url)
     if not (200 <= response.status_code < 300):
         raise Exception(f"Error {response.status_code} while getting notes")
