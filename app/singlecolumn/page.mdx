@@ -512,9 +512,8 @@ it is the purpose of this new `PATCH` endpoint
 
 Please note in this code:
 
-- the use of the `Body` annotation; this means that the `payload` argument is
-  expected to be in the body of the request, and not in the URL or headers
-- again we use the `Note` class to define the type of the payload; this means that
+- the payload is implicitly assumed to be exposed in the Body part of the incoming request
+- here again we use the `Note` class to define the type of that payload; this means that
   FastAPI will automatically check that the incoming data is consistent with the
   `Note` class, and will return a 422 error if it is not
 - also interesting, this line  
@@ -529,21 +528,12 @@ Please note in this code:
 # !diff(2:2) -
 # !diff(3:3) +
 # !className(6) separator
-# !diff(10:10) +
-# !className(13) separator
-# !diff(17:39) +
+# !diff(10:32) +
 ........
 VERSION = "04"
 VERSION = "05"
 from contextlib import asynccontextmanager
 from typing import Annotated
-........
-from fastapi.responses import HTMLResponse
-from fastapi.responses import RedirectResponse
-from fastapi.templating import Jinja2Templates
-from fastapi import Body
-from sqlmodel import SQLModel, create_engine
-from sqlmodel import Session
 ........
         request=request,
         name="notes.html.j2",
@@ -555,10 +545,10 @@ http PATCH :8000/api/notes/1 done:=true
 http PATCH :8000/api/notes/1 description="TP Backend FastAPI"
 """
 @app.patch("/api/notes/{note_id}", response_model=Note)
-def update_note(
+async def update_note(
     note_id: int,
     session: SessionDep,
-    payload: Annotated[Note, Body(...)],
+    payload: Note,
 ):
     db_note = session.get(Note, note_id)
     if not db_note:
@@ -883,11 +873,11 @@ def create_note(note: NoteCreate, session: SessionDep) -> Note:
 """
 http :8000/api/notes
 ........
-def update_note(
+async def update_note(
     note_id: int,
     session: SessionDep,
-    payload: Annotated[Note, Body(...)],
-    payload: Annotated[NoteUpdate, Body(...)],
+    payload: Note,
+    payload: NoteUpdate,
 ):
     db_note = session.get(Note, note_id)
     if not db_note:
@@ -1011,9 +1001,9 @@ VERSION = "11b"
 from contextlib import asynccontextmanager
 from typing import Annotated
 ........
+from fastapi.responses import HTMLResponse
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
-from fastapi import Body
 from fastapi import WebSocket, WebSocketDisconnect
 from sqlmodel import SQLModel, create_engine
 from sqlmodel import Session
@@ -1109,14 +1099,11 @@ as you can see, the messages that are sent on the ws channel are all of the form
 # !diff(11:11) +
 # !diff(16:16) +
 # !className(19) separator
-# !diff(23:23) -
-# !diff(24:24) +
-# !className(28) separator
-# !diff(32:32) +
-# !className(35) separator
-# !diff(39:39) -
-# !diff(40:40) +
-# !diff(47:47) +
+# !diff(23:23) +
+# !className(26) separator
+# !diff(30:30) -
+# !diff(31:31) +
+# !diff(38:38) +
 ........
 VERSION = "11c"
 VERSION = "12"
@@ -1135,15 +1122,6 @@ async def create_note(note: NoteCreate, session: SessionDep) -> Note:
     await websocket_broadcaster.broadcast(action="create", note=db_note)
     return db_note
 """
-........
-http PATCH :8000/api/notes/1 description="TP Backend FastAPI"
-"""
-@app.patch("/api/notes/{note_id}", response_model=Note)
-def update_note(
-async def update_note(
-    note_id: int,
-    session: SessionDep,
-    payload: Annotated[NoteUpdate, Body(...)],
 ........
     session.add(db_note)
     session.commit()
